@@ -35,8 +35,8 @@ so nothing is ever silently rewritten:
 
 - **Rich text** — a word processor. No `#`, no `**`, ever: a formatting bar
   (Title / Heading / Subheading / Body, **B** *I* <u>U</u> ~~S~~, highlight,
-  monospace, lists, checklists, indent, quote) applies the markdown for you and
-  lights up to show what the caret is sitting in. On a phone the same controls
+  text colour, monospace, lists, checklists, indent, quote) applies the markdown
+  for you and lights up to show what the caret is sitting in. On a phone the same controls
   open as a Format sheet from the **Aa** button. Markdown still works while you
   type — `# ` at the start of a line is still a Title, and the marker vanishes
   the moment it becomes one. Applying a marker leaves the caret after it, so a
@@ -92,9 +92,15 @@ so nothing is ever silently rewritten:
 - **Markdown source** — the file, exactly as it is written.
 
 Underline has no markdown syntax, so it is written as `<u>…</u>`, which every
-renderer passes through; highlight uses `==text==`. Everything else is ordinary
-CommonMark, and a note written in rich text opens as plain markdown anywhere
-else.
+renderer passes through; highlight uses `==text==`. **Colour** is the same idea
+carrying a value — `<span style="color:#cf222e">…</span>`, so a coloured note
+is still coloured in Obsidian or on GitHub. The picker offers eight, because a
+colour has to stay legible on both backgrounds and a free-form wheel offers a
+thousand ways to write a note you cannot read tonight; each is stored as its
+light-theme hex and swapped for a lighter one when the app is dark, so the file
+stays portable and the screen stays readable. A colour from somewhere else is
+honoured as written. Everything else is ordinary CommonMark, and a note written
+in rich text opens as plain markdown anywhere else.
 
 **A note's properties are a form, not a wall of YAML.** The `---` block at the
 top of a file — the `date:`, `tags:` and `pinned:` the rest of the app reads —

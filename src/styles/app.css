@@ -86,6 +86,22 @@
   --callout-warning: #9a6700;
   --callout-caution: #cf222e;
 
+  /*
+   * Coloured text. The light values here are also the ones written into the
+   * file — a note has no theme, so it carries the colour a reader without this
+   * app would see — and the dark blocks below are what makes the same note
+   * legible on a dark background. The list lives in editor/colors.ts; the two
+   * have to agree, and the `id` there is the half of the name after `--mark-`.
+   */
+  --mark-red: #cf222e;
+  --mark-orange: #bc4c00;
+  --mark-yellow: #9a6700;
+  --mark-green: #1a7f37;
+  --mark-blue: #0969da;
+  --mark-purple: #8250df;
+  --mark-pink: #bf3989;
+  --mark-grey: #656d76;
+
   --syn-keyword: #a626a4;
   --syn-string: #50a14f;
   --syn-number: #986801;
@@ -127,6 +143,15 @@
     --callout-important: #ab7df8;
     --callout-warning: #d29922;
     --callout-caution: #f85149;
+
+    --mark-red: #ff7b72;
+    --mark-orange: #ffa657;
+    --mark-yellow: #d29922;
+    --mark-green: #3fb950;
+    --mark-blue: #4493f8;
+    --mark-purple: #ab7df8;
+    --mark-pink: #f778ba;
+    --mark-grey: #9198a1;
 
     --syn-keyword: #c678dd;
     --syn-string: #98c379;
@@ -171,6 +196,14 @@
   --callout-important: #ab7df8;
   --callout-warning: #d29922;
   --callout-caution: #f85149;
+  --mark-red: #ff7b72;
+  --mark-orange: #ffa657;
+  --mark-yellow: #d29922;
+  --mark-green: #3fb950;
+  --mark-blue: #4493f8;
+  --mark-purple: #ab7df8;
+  --mark-pink: #f778ba;
+  --mark-grey: #9198a1;
   --syn-keyword: #c678dd;
   --syn-string: #98c379;
   --syn-number: #d19a66;

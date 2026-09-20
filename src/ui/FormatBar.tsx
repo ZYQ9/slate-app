@@ -20,12 +20,15 @@ import { useLayoutEffect, useRef, useState } from 'preact/hooks'
 import {
   type BlockStyle,
   applyBlockStyle,
+  applyColor,
   applyIndent,
   applyInline,
   applyList,
   applyQuote,
   formatSnapshot,
 } from '../editor/format'
+import { cssColor, paletteColor } from '../editor/colors'
+import { openColorMenu } from './ColorPicker'
 import type { EditorView } from '@codemirror/view'
 import { insertTable, tableContext } from '../editor/table'
 import { editLinkAtCaret } from './linkActions'
@@ -45,6 +48,7 @@ import {
   IconOutdent,
   IconQuote,
   IconTable,
+  IconTextColor,
 } from './Icons'
 
 /** A point, for the things that open at one. */
@@ -120,6 +124,22 @@ export function FormatBar({ getView, variant }: FormatBarProps) {
    * The menu itself is shared with the handles on the table (see tableMenu.ts),
    * which open the same operations narrowed to one row or column.
    */
+  /**
+   * What the colour button is called in the overflow menu, colour included.
+   *
+   * The name rather than the hex wherever there is one: "Text colour — Blue"
+   * is what a person picked, and `#0969da` is what the file happens to say.
+   *
+   * Only the menu row says it. The button's own accessible name stays "Text
+   * colour" whatever is applied, because that is what the control *is* — a
+   * name that changed with the selection would read as a different button
+   * every time the caret moved, and the colour in use is already announced by
+   * the pressed swatch once the palette is open.
+   */
+  const colorLabel = f.color
+    ? `Text colour — ${paletteColor(f.color)?.label ?? f.color}`
+    : 'Text colour'
+
   const tableMenu = (at: At) => {
     const view = getView()
     if (!view) return
@@ -161,22 +181,45 @@ export function FormatBar({ getView, variant }: FormatBarProps) {
       id: 'marks',
       aria: 'Text style',
       items: [
-        { id: 'bold', label: 'Bold', hint: 'Bold (⌘B)', glyph: <b>B</b> },
-        { id: 'italic', label: 'Italic', hint: 'Italic (⌘I)', glyph: <i>I</i> },
-        { id: 'underline', label: 'Underline', hint: 'Underline (⌘U)', glyph: <u>U</u> },
-        { id: 'strike', label: 'Strikethrough', hint: 'Strikethrough (⌘⇧X)', glyph: <s>S</s> },
+        ...[
+          { id: 'bold', label: 'Bold', hint: 'Bold (⌘B)', glyph: <b>B</b> },
+          { id: 'italic', label: 'Italic', hint: 'Italic (⌘I)', glyph: <i>I</i> },
+          { id: 'underline', label: 'Underline', hint: 'Underline (⌘U)', glyph: <u>U</u> },
+          { id: 'strike', label: 'Strikethrough', hint: 'Strikethrough (⌘⇧X)', glyph: <s>S</s> },
+          {
+            id: 'highlight',
+            label: 'Highlight',
+            hint: 'Highlight (⌘⇧H)',
+            glyph: <IconHighlight size={17} />,
+          },
+          {
+            id: 'code',
+            label: 'Monospaced',
+            hint: 'Monospaced (⌘E)',
+            glyph: <IconCode size={17} />,
+          },
+        ].map((m) => ({
+          ...m,
+          pressed: f.marks[m.id as keyof typeof f.marks],
+          run: run(applyInline(m.id as Parameters<typeof applyInline>[0])),
+        })),
+        /*
+         * Colour is the one text style that is not a toggle, so it opens the
+         * palette rather than applying something — and the button wears the
+         * colour it would come back to, since a control that hides its value
+         * behind a menu can say nothing about it otherwise.
+         */
         {
-          id: 'highlight',
-          label: 'Highlight',
-          hint: 'Highlight (⌘⇧H)',
-          glyph: <IconHighlight size={17} />,
+          id: 'color',
+          label: colorLabel,
+          hint: 'Text colour',
+          glyph: <IconTextColor size={18} bar={f.color ? cssColor(f.color) : undefined} />,
+          pressed: !!f.color,
+          opens: true,
+          run: (at: At) =>
+            openColorMenu(at, f.color, (hex) => run(applyColor(hex))()),
         },
-        { id: 'code', label: 'Monospaced', hint: 'Monospaced (⌘E)', glyph: <IconCode size={17} /> },
-      ].map((m) => ({
-        ...m,
-        pressed: f.marks[m.id as keyof typeof f.marks],
-        run: run(applyInline(m.id as Parameters<typeof applyInline>[0])),
-      })),
+      ],
     },
     /*
      * Lists, indentation and the quote are three groups rather than the one

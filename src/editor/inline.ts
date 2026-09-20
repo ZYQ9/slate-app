@@ -17,6 +17,7 @@ import { attachmentUrl, resolveEmbed, resolveLink } from '../core/vault'
 import { resolveVars, varText, type FrontmatterValue } from '../core/markdown'
 import { mediaClass } from '../core/util'
 import { requestLightbox } from './context'
+import { COLOR_CLOSE, COLOR_OPEN, cssColor } from './colors'
 import { MD_URL } from './links'
 
 interface Ctx {
@@ -99,6 +100,21 @@ const RULES: Array<{
   {
     re: /^<u>([\s\S]+?)<\/u>/,
     build: (m, ctx) => wrap('u', m[1], ctx),
+  },
+  // Colour, the same way and for the same reason — see editor/colors.ts. The
+  // hex is checked rather than trusted: this is note content on its way into a
+  // style attribute, and `cssColor` is the only thing that decides it is one.
+  {
+    re: new RegExp(`^${COLOR_OPEN}([\\s\\S]+?)${COLOR_CLOSE}`),
+    build: (m, ctx) => {
+      const css = cssColor(m[1])
+      if (!css) return document.createTextNode(m[0])
+      const el = document.createElement('span')
+      el.className = 'cm-color'
+      el.style.color = css
+      appendInline(el, m[2], ctx)
+      return el
+    },
   },
   {
     re: /^==([^\s][\s\S]*?)==/,
@@ -216,9 +232,16 @@ export function appendInline(parent: Node, text: string, ctx: Ctx): void {
     }
 
     let matched = false
-    // Only try rules at characters that could start one; scanning every rule at
-    // every position would be needlessly quadratic on long cells.
-    if (/[`!\[*_~#h$]/.test(text[i])) {
+    /*
+     * Only try rules at characters that could start one; scanning every rule at
+     * every position would be needlessly quadratic on long cells.
+     *
+     * Every rule's first character has to be in here or the rule is dead code.
+     * `<` and `=` were missing, which is why a `<u>` or an `==` in a table cell
+     * used to come out as the literal characters while the same markup a line
+     * above it rendered.
+     */
+    if (/[`!\[*_~#h$<=]/.test(text[i])) {
       const rest = text.slice(i)
       for (const rule of RULES) {
         const m = rule.re.exec(rest)

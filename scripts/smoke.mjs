@@ -2258,6 +2258,53 @@ try {
   )
 
   /*
+   * Colour, which is the one text style that opens something rather than
+   * toggling: the button leads to a palette, and picking the colour already in
+   * use is what takes it off again. The markup it writes is long enough that a
+   * wrong offset anywhere shows up as the wrong words being coloured.
+   */
+  const pickColor = async (label) => {
+    await clickFormat('Text colour')
+    await page.waitForTimeout(250)
+    await page.locator(`.color-swatch[aria-label="${label}"]`).click()
+    await page.waitForTimeout(350)
+  }
+
+  await page.locator('.cm-content .cm-highlight', { hasText: 'sample' }).first().dblclick()
+  await page.waitForTimeout(250)
+  await pickColor('Red')
+  check(
+    'a colour goes on the words that were selected',
+    (await noteAfterEdit('sample', '<span style="color:#cf222e">sample</span>')).includes(
+      '<span style="color:#cf222e">sample</span>',
+    ),
+    JSON.stringify((await noteContaining('sample')).slice(0, 80)),
+  )
+  const colored = page.locator('.cm-content .cm-color', { hasText: 'sample' }).first()
+  check('and is painted in the note', (await colored.count()) === 1)
+  check(
+    'with its tags hidden like every other piece of syntax',
+    !(await page.locator('.cm-content').innerText()).includes('<span'),
+  )
+
+  // Picking a second colour re-colours rather than wrapping a span in a span.
+  await pickColor('Blue')
+  const recolored = await noteAfterEdit('sample', '<span style="color:#0969da">sample</span>')
+  check(
+    'picking another colour replaces the first',
+    recolored.includes('<span style="color:#0969da">sample</span>') &&
+      !recolored.includes('#cf222e'),
+    JSON.stringify(recolored.slice(0, 80)),
+  )
+
+  await pickColor('Blue')
+  check(
+    'and picking the one it already has takes the colour off',
+    (await noteAfterEdit('sample', '==sample==')).includes('==sample=='),
+    JSON.stringify((await noteContaining('sample')).slice(0, 80)),
+  )
+
+  /*
    * The same pixel, now with the deletion keys and the clipboard.
    *
    * A heading can only be selected from the first character of its text, since

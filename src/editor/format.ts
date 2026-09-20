@@ -16,13 +16,26 @@ import { signal } from '@preact/signals'
 import { EditorSelection, type EditorState, type TransactionSpec } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import { bareUriAt, linkAt } from './links'
+import { COLOR_CLOSE, COLOR_OPEN, colorSpan } from './colors'
 import { tableAt, type Align } from './table'
 
 /** Paragraph styles, named as Apple Notes names them. */
 export type BlockStyle = 'title' | 'heading' | 'subheading' | 'body'
 
-/** Character-level styles. */
+/** Character-level styles that toggle: on, off, and nothing to say about it. */
 export type InlineMark = 'bold' | 'italic' | 'underline' | 'strike' | 'code' | 'highlight'
+
+/**
+ * Everything the inline scanner recognises.
+ *
+ * Colour is not an `InlineMark` because it is not a toggle — it carries a
+ * value, so there is no pair of delimiters to write it with and no single
+ * "pressed" to report for it. It is scanned with the rest all the same, and
+ * that is the point: the caret rules, the copy that takes hidden markup with
+ * it, and the selection that grows over its own syntax are written once
+ * against `scanInline` and cost colour nothing.
+ */
+export type SpanMark = InlineMark | 'color'
 
 export type ListKind = 'bullet' | 'number' | 'check'
 
@@ -128,27 +141,55 @@ export function parseLine(text: string): LineParts {
 /* ----------------------------------------------------------- inline scanning */
 
 export interface InlineSpan {
-  mark: InlineMark
+  mark: SpanMark
   /** Range of the whole construct, delimiters included. */
   from: number
   to: number
   /** Range of the text between the delimiters. */
   innerFrom: number
   innerTo: number
+  /** The value a mark carries, where it carries one: a colour's hex. */
+  arg?: string
 }
 
 /**
  * Rules in precedence order: code first, because nothing inside it is markup,
  * then the two-character marks before the one-character one so `**bold**` is
- * never read as an empty italic wrapping `*bold*`.
+ * never read as an empty italic wrapping `*bold*`. Colour goes near the front
+ * with the other HTML, ahead of anything that could claim a character of its
+ * tag.
+ *
+ * `inner` and `close` are what turn a match back into positions. The inner
+ * text cannot be located by searching the match for it — `<u>u</u>` finds the
+ * tag, and `<span style="color:#ff0000">ff0000</span>` finds the attribute —
+ * so it is measured from the end instead, where every rule knows exactly how
+ * many characters its closing delimiter took.
  */
-const INLINE_RULES: Array<{ mark: InlineMark; re: RegExp }> = [
-  { mark: 'code', re: /^(`+)([^`]+?)\1(?!`)/ },
-  { mark: 'underline', re: /^<u>(.+?)<\/u>/ },
-  { mark: 'bold', re: /^\*\*(?!\s)(.+?)(?<!\s)\*\*/ },
-  { mark: 'strike', re: /^~~(?!\s)(.+?)(?<!\s)~~/ },
-  { mark: 'highlight', re: /^==(?!\s)(.+?)(?<!\s)==/ },
-  { mark: 'italic', re: /^\*(?!\s|\*)(.+?)(?<!\s)\*(?!\*)/ },
+interface InlineRule {
+  mark: SpanMark
+  re: RegExp
+  /** Capture group holding the text between the delimiters. */
+  inner: number
+  /** Length of the closing delimiter for a given match. */
+  close: (m: RegExpExecArray) => number
+  /** Capture group holding the mark's value, for the ones that carry one. */
+  arg?: number
+}
+
+const INLINE_RULES: InlineRule[] = [
+  { mark: 'code', re: /^(`+)([^`]+?)\1(?!`)/, inner: 2, close: (m) => m[1].length },
+  { mark: 'underline', re: /^<u>(.+?)<\/u>/, inner: 1, close: () => 4 },
+  {
+    mark: 'color',
+    re: new RegExp(`^${COLOR_OPEN}(.+?)${COLOR_CLOSE}`),
+    inner: 2,
+    arg: 1,
+    close: () => COLOR_CLOSE.length,
+  },
+  { mark: 'bold', re: /^\*\*(?!\s)(.+?)(?<!\s)\*\*/, inner: 1, close: () => 2 },
+  { mark: 'strike', re: /^~~(?!\s)(.+?)(?<!\s)~~/, inner: 1, close: () => 2 },
+  { mark: 'highlight', re: /^==(?!\s)(.+?)(?<!\s)==/, inner: 1, close: () => 2 },
+  { mark: 'italic', re: /^\*(?!\s|\*)(.+?)(?<!\s)\*(?!\*)/, inner: 1, close: () => 1 },
 ]
 
 /**
@@ -164,11 +205,11 @@ export function scanInline(text: string, offset = 0, depth = 0): InlineSpan[] {
   if (depth > 4) return out
 
   for (let i = 0; i < text.length; ) {
-    let hit: { mark: InlineMark; m: RegExpExecArray } | undefined
+    let hit: { rule: InlineRule; m: RegExpExecArray } | undefined
     for (const rule of INLINE_RULES) {
       const m = rule.re.exec(text.slice(i))
       if (m) {
-        hit = { mark: rule.mark, m }
+        hit = { rule, m }
         break
       }
     }
@@ -176,18 +217,21 @@ export function scanInline(text: string, offset = 0, depth = 0): InlineSpan[] {
       i++
       continue
     }
-    const whole = hit.m[0]
-    const inner = hit.m[hit.m.length - 1]
-    const innerFrom = i + whole.indexOf(inner)
+    const { rule, m } = hit
+    const whole = m[0]
+    const inner = m[rule.inner]
+    // Measured back from the closing delimiter; see `InlineRule`.
+    const innerFrom = i + whole.length - hit.rule.close(m) - inner.length
     out.push({
-      mark: hit.mark,
+      mark: rule.mark,
       from: offset + i,
       to: offset + i + whole.length,
       innerFrom: offset + innerFrom,
       innerTo: offset + innerFrom + inner.length,
+      arg: rule.arg === undefined ? undefined : m[rule.arg],
     })
     // Nested marks, except inside code where the content is literal.
-    if (hit.mark !== 'code') out.push(...scanInline(inner, offset + innerFrom, depth + 1))
+    if (rule.mark !== 'code') out.push(...scanInline(inner, offset + innerFrom, depth + 1))
     i += whole.length
   }
   return out
@@ -196,7 +240,7 @@ export function scanInline(text: string, offset = 0, depth = 0): InlineSpan[] {
 /** The innermost span of `mark` whose inner text covers [from, to]. */
 function spanAround(
   state: EditorState,
-  mark: InlineMark,
+  mark: SpanMark,
   from: number,
   to: number,
 ): InlineSpan | undefined {
@@ -374,6 +418,36 @@ export function canIndent(state: EditorState, dir: 1 | -1): boolean {
 /* ------------------------------------------------------------ inline marks */
 
 /**
+ * What a mark applied at `range` should end up around.
+ *
+ * With text selected, that text minus any whitespace at its edges; with a bare
+ * caret, the word it sits in, or nothing at all when it sits in open space.
+ * Shared by every inline mark and by colour, so "bold" and "make this red"
+ * claim exactly the same characters from the same click.
+ */
+function wrapRange(
+  state: EditorState,
+  range: { from: number; to: number },
+): { from: number; to: number } {
+  let { from, to } = range
+  if (from === to) {
+    const line = state.doc.lineAt(from)
+    const rel = from - line.from
+    const left = /[\w'-]*$/.exec(line.text.slice(0, rel))?.[0].length ?? 0
+    const right = /^[\w'-]*/.exec(line.text.slice(rel))?.[0].length ?? 0
+    return { from: from - left, to: to + right }
+  }
+  // Leave whitespace outside the markers. `**word **` is not emphasis in
+  // CommonMark — a closing run may not be preceded by a space — so a
+  // selection that swept up a trailing space would render as literal
+  // asterisks instead of bold text.
+  const raw = state.doc.sliceString(from, to)
+  from += raw.length - raw.trimStart().length
+  to -= raw.length - raw.trimEnd().length
+  return { from, to: to < from ? from : to }
+}
+
+/**
  * Toggle an inline mark.
  *
  * Three cases, in the order a person would expect them: inside an existing span
@@ -407,30 +481,78 @@ export function toggleInline(state: EditorState, mark: InlineMark): TransactionS
       }
     }
 
-    let { from, to } = range
-    if (from === to) {
-      const line = state.doc.lineAt(from)
-      const rel = from - line.from
-      const left = /[\w'-]*$/.exec(line.text.slice(0, rel))?.[0].length ?? 0
-      const right = /^[\w'-]*/.exec(line.text.slice(rel))?.[0].length ?? 0
-      from -= left
-      to += right
-    } else {
-      // Leave whitespace outside the markers. `**word **` is not emphasis in
-      // CommonMark — a closing run may not be preceded by a space — so a
-      // selection that swept up a trailing space would render as literal
-      // asterisks instead of bold text.
-      const raw = state.doc.sliceString(from, to)
-      from += raw.length - raw.trimStart().length
-      to -= raw.length - raw.trimEnd().length
-      if (to < from) to = from
-    }
+    const { from, to } = wrapRange(state, range)
     const text = state.doc.sliceString(from, to)
     return {
       changes: { from, to, insert: `${open}${text}${close}` },
       range: text
         ? EditorSelection.range(from + open.length, to + open.length)
         : EditorSelection.cursor(from + open.length),
+    }
+  })
+}
+
+/**
+ * The colour the selection is written in, or null for the note's own.
+ *
+ * The innermost one wins, the same as every other mark: text inside a red span
+ * inside a blue one is red, and that is what the picker should show as chosen.
+ */
+export function colorAt(state: EditorState, from: number, to: number): string | null {
+  return spanAround(state, 'color', from, to)?.arg?.toLowerCase() ?? null
+}
+
+/**
+ * Put the selection in a colour, or take the colour off it with `null`.
+ *
+ * Not a toggle, because there is more than one "on": picking a second colour
+ * for text that already has one *re-colours* it rather than nesting a span
+ * inside a span. Only the opening tag is rewritten in that case — the text and
+ * the closing tag are left exactly where they are, so a selection sitting in
+ * the middle of the phrase stays on the same words while the colour changes
+ * under it. Picking the colour it already has is what takes it off, matching
+ * the way pressing B in bold text un-bolds it.
+ */
+export function setColor(state: EditorState, hex: string | null): TransactionSpec {
+  return state.changeByRange((range) => {
+    const existing = spanAround(state, 'color', range.from, range.to)
+
+    if (existing) {
+      const openLen = existing.innerFrom - existing.from
+      const same = hex !== null && existing.arg?.toLowerCase() === hex.toLowerCase()
+
+      if (hex === null || same) {
+        // Both ends sit inside the span's text, so the only markup removed in
+        // front of them is the opening tag — see `toggleInline`, where getting
+        // this shift wrong quietly ate two characters per toggle.
+        const shift = (pos: number) => pos - openLen
+        return {
+          changes: [
+            { from: existing.from, to: existing.innerFrom, insert: '' },
+            { from: existing.innerTo, to: existing.to, insert: '' },
+          ],
+          range: EditorSelection.range(shift(range.anchor), shift(range.head)),
+        }
+      }
+
+      const open = colorSpan(hex, '').slice(0, -COLOR_CLOSE.length)
+      const shift = (pos: number) => pos + open.length - openLen
+      return {
+        changes: { from: existing.from, to: existing.innerFrom, insert: open },
+        range: EditorSelection.range(shift(range.anchor), shift(range.head)),
+      }
+    }
+
+    if (hex === null) return { range }
+
+    const { from, to } = wrapRange(state, range)
+    const text = state.doc.sliceString(from, to)
+    const openLen = colorSpan(hex, '').length - COLOR_CLOSE.length
+    return {
+      changes: { from, to, insert: colorSpan(hex, text) },
+      range: text
+        ? EditorSelection.range(from + openLen, to + openLen)
+        : EditorSelection.cursor(from + openLen),
     }
   })
 }
@@ -490,6 +612,8 @@ export interface FormatSnapshot {
   list: ListKind | null
   quote: boolean
   marks: Record<InlineMark, boolean>
+  /** The colour the caret is writing in, as a hex, or null for the default. */
+  color: string | null
   canIndent: boolean
   canOutdent: boolean
   /** True when the caret sits in a link — the Link button then edits it. */
@@ -522,6 +646,7 @@ export const EMPTY_SNAPSHOT: FormatSnapshot = {
   list: null,
   quote: false,
   marks: NO_MARKS,
+  color: null,
   canIndent: false,
   canOutdent: false,
   hasSelection: false,
@@ -549,6 +674,7 @@ export function inspect(state: EditorState): FormatSnapshot {
     list: p.markerKind,
     quote: p.quote.length > 0,
     marks,
+    color: colorAt(state, head.from, head.to),
     canIndent: canIndent(state, 1),
     canOutdent: canIndent(state, -1),
     link: !!(linkAt(state, head.head) ?? bareUriAt(state, head.head)),
@@ -585,6 +711,9 @@ export const applyBlockStyle = (style: BlockStyle) => (view: EditorView) =>
 
 export const applyInline = (mark: InlineMark) => (view: EditorView) =>
   run(view, { ...toggleInline(view.state, mark), userEvent: 'input.format' })
+
+export const applyColor = (hex: string | null) => (view: EditorView) =>
+  run(view, { ...setColor(view.state, hex), userEvent: 'input.format' })
 
 export const applyList = (kind: ListKind) => (view: EditorView) =>
   run(view, toggleList(view.state, kind))

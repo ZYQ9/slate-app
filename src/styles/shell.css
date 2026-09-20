@@ -792,6 +792,67 @@
 }
 
 /* ==========================================================================
+   Text-colour picker
+
+   The same body-in-a-menu as the picker above: popover on a pointer device,
+   sheet on a phone, nothing of its own but the grid.
+   ========================================================================== */
+
+.menu-color {
+  min-width: 212px;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 2px;
+}
+
+/*
+ * A letter rather than a filled chip: the swatch is a sample of what the text
+ * will look like, which is the thing being chosen, and it doubles the contrast
+ * check — a colour that is hard to read here is hard to read in the note.
+ */
+.color-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 17px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.menu-sheet .color-swatch {
+  min-height: 46px;
+  font-size: 20px;
+}
+.color-swatch:hover {
+  border-color: var(--border-strong);
+}
+/* The chosen one is ringed rather than filled, so the sample stays the sample. */
+.color-swatch[aria-pressed='true'] {
+  border-color: currentColor;
+  box-shadow: 0 0 0 1px currentColor inset;
+}
+
+.color-clear {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  border-radius: 0 0 8px 8px;
+  color: var(--text-muted);
+}
+.color-clear[aria-current='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ==========================================================================
    Quick capture
    ==========================================================================
 

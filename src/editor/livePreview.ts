@@ -51,6 +51,7 @@ import {
   isDelimiterRow,
 } from './widgets'
 import { parseCallout } from './callout'
+import { COLOR_CLOSE, COLOR_OPEN, cssColor } from './colors'
 import { findDue, isTaskLine, resolveVars, scanVars, varText } from '../core/markdown'
 import { frontmatterEnd, frontmatterLines, frontmatterOf } from './vars'
 import { noteContext } from './context'
@@ -236,11 +237,69 @@ function lineTouched(
 
 const TAG_RE = /(^|[\s(>])(#[A-Za-z0-9_][A-Za-z0-9/_-]*)/g
 
-/** Inline styles the markdown parser has no node for: `<u>text</u>`, `==text==`. */
-const INLINE_EXTRAS: Array<[RegExp, Decoration]> = [
-  [/<u>(.+?)<\/u>/g, underlined],
-  [/==(?!\s)(.+?)(?<!\s)==/g, highlighted],
+/**
+ * Inline styles the markdown parser has no node for: `<u>text</u>`, `==text==`,
+ * and the coloured span (see editor/colors.ts).
+ *
+ * `inner` and `close` locate the text between the delimiters by measuring back
+ * from the end of the match, for the reason spelled out on `InlineRule` in
+ * format.ts: searching the match for its own inner text finds the `u` in `<u>`
+ * and the digits in a colour's attribute.
+ */
+interface InlineExtra {
+  id: 'underline' | 'highlight' | 'color'
+  re: RegExp
+  /** Capture group holding the text between the delimiters. */
+  inner: number
+  /** Length of the closing delimiter. */
+  close: number
+  /** The decoration for a match, or null to leave the markup as text. */
+  deco: (m: RegExpExecArray) => Decoration | null
+}
+
+const INLINE_EXTRAS: InlineExtra[] = [
+  { id: 'underline', re: /<u>(.+?)<\/u>/g, inner: 1, close: 4, deco: () => underlined },
+  {
+    id: 'highlight',
+    re: /==(?!\s)(.+?)(?<!\s)==/g,
+    inner: 1,
+    close: 2,
+    deco: () => highlighted,
+  },
+  {
+    id: 'color',
+    re: new RegExp(`${COLOR_OPEN}(.+?)${COLOR_CLOSE}`, 'g'),
+    inner: 2,
+    close: COLOR_CLOSE.length,
+    deco: (m) => colored(m[1]),
+  },
 ]
+
+/**
+ * The mark for one colour, built once per colour rather than per match.
+ *
+ * A note repeating the same red forty times is one decoration spec and forty
+ * ranges; CodeMirror compares mark decorations by identity when it diffs, so
+ * handing it a fresh object per match would redraw every coloured span on every
+ * keystroke.
+ *
+ * The value is only ever a hex that `cssColor` recognised — anything else comes
+ * back undefined and the markup is left on screen as the literal text it is,
+ * which is the honest rendering of something this doesn't understand and the
+ * reason no string from a note reaches a style attribute unchecked.
+ */
+const colorCache = new Map<string, Decoration>()
+
+function colored(hex: string): Decoration | null {
+  const key = hex.toLowerCase()
+  const hit = colorCache.get(key)
+  if (hit) return hit
+  const css = cssColor(key)
+  if (!css) return null
+  const deco = Decoration.mark({ class: 'cm-color', attributes: { style: `color:${css}` } })
+  colorCache.set(key, deco)
+  return deco
+}
 
 function buildDecorations(view: EditorView): DecorationSet {
   const { state } = view
@@ -687,30 +746,35 @@ function buildDecorations(view: EditorView): DecorationSet {
     })
 
     /*
-     * Underline and highlight.
+     * Underline, highlight and colour.
      *
-     * Neither is CommonMark, so the parser knows nothing about them and they
-     * are matched textually, like hashtags below. Underline is the `<u>` HTML
-     * markdown passes through — the only way to write one at all — and it is
-     * what the toolbar's U button produces.
+     * None of the three is CommonMark, so the parser knows nothing about them
+     * and they are matched textually, like hashtags below. Underline is the
+     * `<u>` HTML markdown passes through — the only way to write one at all —
+     * and it is what the toolbar's U button produces; colour is the same idea
+     * carrying a value, and is the only one of the three whose decoration
+     * depends on what was matched.
      */
     for (let p = vFrom; p <= vTo; ) {
       const line = state.doc.lineAt(p)
       // A setext underline (`====`) is a heading marker, not a highlight.
       const setext = /^[=]+$/.test(line.text.trim())
-      for (const [re, deco] of INLINE_EXTRAS) {
-        if (deco === highlighted && setext) continue
-        re.lastIndex = 0
+      for (const extra of INLINE_EXTRAS) {
+        if (extra.id === 'highlight' && setext) continue
+        extra.re.lastIndex = 0
         let m: RegExpExecArray | null
-        while ((m = re.exec(line.text))) {
+        while ((m = extra.re.exec(line.text))) {
           const from = line.from + m.index
           const to = from + m[0].length
           if (isInsideCodeOrLink(tree.resolveInner(from + 1, 1))) continue
           if (touched(state, from, to, 'format')) continue
-          const innerFrom = from + m[0].indexOf(m[1])
+          const deco = extra.deco(m)
+          if (!deco) continue
+          const inner = m[extra.inner]
+          const innerFrom = to - extra.close - inner.length
           out.push(hidden.range(from, innerFrom))
-          out.push(deco.range(innerFrom, innerFrom + m[1].length))
-          out.push(hidden.range(innerFrom + m[1].length, to))
+          out.push(deco.range(innerFrom, innerFrom + inner.length))
+          out.push(hidden.range(innerFrom + inner.length, to))
         }
       }
       if (line.to >= vTo) break

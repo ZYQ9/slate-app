@@ -9,12 +9,14 @@
 import { describe, expect, it } from 'vitest'
 import { EditorState, type TransactionSpec } from '@codemirror/state'
 import {
+  colorAt,
   expandToMarkup,
   indentList,
   inspect,
   parseLine,
   scanInline,
   setBlockStyle,
+  setColor,
   toggleInline,
   toggleList,
   toggleQuote,
@@ -240,6 +242,100 @@ describe('inline marks', () => {
   })
 })
 
+describe('colour', () => {
+  const RED = '#cf222e'
+  const BLUE = '#0969da'
+  const red = (t: string) => `<span style="color:${RED}">${t}</span>`
+
+  it('wraps a selection, and the word under a bare caret', () => {
+    const s = st('«Friday» is the deadline')
+    expect(text(s, setColor(s, RED))).toBe(`${red('Friday')} is the deadline`)
+    const c = st('due Fri‸day now')
+    expect(text(c, setColor(c, RED))).toBe(`due ${red('Friday')} now`)
+  })
+
+  /*
+   * The same round trip `toggleInline` has to make, and for the same reason —
+   * an off-by-one in the shift eats the selection two characters at a time —
+   * but with an opening tag long enough that a wrong shift is not subtle.
+   */
+  it('gives back exactly the selection it coloured', () => {
+    let s = st('«Friday» is the deadline')
+    for (let i = 0; i < 4; i++) {
+      expect(out(s, setColor(s, RED))).toBe(
+        `<span style="color:${RED}">«Friday»</span> is the deadline`,
+      )
+      s = s.update(setColor(s, RED)).state
+      expect(out(s, setColor(s, RED))).toBe('«Friday» is the deadline')
+      s = s.update(setColor(s, RED)).state
+    }
+  })
+
+  it('takes the colour off when the same one is picked again', () => {
+    const s = st(`${red('Fri‸day')} is the deadline`)
+    expect(text(s, setColor(s, RED))).toBe('Friday is the deadline')
+    expect(text(s, setColor(s, RED.toUpperCase()))).toBe('Friday is the deadline')
+  })
+
+  it('and when Automatic is picked', () => {
+    const s = st(`${red('Fri‸day')} soon`)
+    expect(text(s, setColor(s, null))).toBe('Friday soon')
+  })
+
+  /*
+   * Re-colouring rewrites the opening tag and nothing else. A second span
+   * wrapped around the first would render the same today and read as two
+   * colours the next time anything tried to answer "what colour is this".
+   */
+  it('re-colours rather than nesting a second span', () => {
+    const s = st(`${red('Fri‸day')} soon`)
+    expect(text(s, setColor(s, BLUE))).toBe(`<span style="color:${BLUE}">Friday</span> soon`)
+  })
+
+  it('leaves the caret on the same character when the tag changes length', () => {
+    const s = st(`${red('Friday‸')} soon`)
+    expect(out(s, setColor(s, BLUE))).toBe(`<span style="color:${BLUE}">Friday‸</span> soon`)
+  })
+
+  it('has nothing to do on uncoloured text', () => {
+    const s = st('plain‸ words')
+    expect(text(s, setColor(s, null))).toBe('plain words')
+  })
+
+  it('reads as a span the scanner and the toolbar both know about', () => {
+    expect(scanInline(red('Friday')).map((s) => s.mark)).toEqual(['color'])
+    const s = st(`${red('Fri‸day')} soon`)
+    expect(colorAt(s, s.selection.main.from, s.selection.main.to)).toBe(RED)
+    expect(inspect(s).color).toBe(RED)
+    expect(inspect(st('plain‸')).color).toBe(null)
+  })
+
+  /*
+   * The inner text is located by measuring back from `</span>`, not by
+   * searching the match for it — a colour whose own digits appear in the text
+   * would otherwise land the span on the attribute.
+   */
+  it('locates text that looks like its own markup', () => {
+    const span = scanInline(`<span style="color:${RED}">cf222e</span>`)[0]
+    expect(span.innerFrom).toBe(`<span style="color:${RED}">`.length)
+    expect(span.arg).toBe(RED)
+  })
+
+  it('finds marks nested inside a colour, and a colour inside a mark', () => {
+    expect(scanInline(red('**bold**')).map((s) => s.mark).sort()).toEqual(['bold', 'color'])
+    expect(
+      scanInline(`**${red('bold')}**`)
+        .map((s) => s.mark)
+        .sort(),
+    ).toEqual(['bold', 'color'])
+  })
+
+  it('ignores a hex that is not one', () => {
+    expect(scanInline('<span style="color:#12345">nope</span>')).toEqual([])
+    expect(scanInline('<span style="color:red">nope</span>')).toEqual([])
+  })
+})
+
 describe('expandToMarkup', () => {
   const range = (fixture: string) => {
     const s = st(fixture)
@@ -256,6 +352,13 @@ describe('expandToMarkup', () => {
 
   it('unwraps nested marks one layer at a time', () => {
     expect(range('**==«word»==**')).toBe('«**==word==**»')
+  })
+
+  /* Copying a coloured word has to take the colour with it, like a highlight. */
+  it('takes in the tags around a colour', () => {
+    expect(range('<span style="color:#cf222e">«Friday»</span>')).toBe(
+      '«<span style="color:#cf222e">Friday</span>»',
+    )
   })
 
   it('leaves a selection that covers only part of a span', () => {

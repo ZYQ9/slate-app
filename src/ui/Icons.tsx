@@ -319,6 +319,21 @@ export const IconHighlight = (p: P) => (
   </Svg>
 )
 
+/**
+ * Text colour: an A over a bar.
+ *
+ * The bar takes the colour currently in use rather than the icon's own, so the
+ * button in the toolbar says which colour it is about to apply — the one thing
+ * a picker behind a button cannot say for itself. `currentColor` when there is
+ * none, which is exactly what "automatic" means.
+ */
+export const IconTextColor = ({ bar, ...p }: P & { bar?: string }) => (
+  <Svg {...p}>
+    <path d="M6 16.5 12 5l6 11.5M8.3 13h7.4" />
+    <path d="M4 20.5h16" stroke={bar ?? 'currentColor'} stroke-width="2.8" />
+  </Svg>
+)
+
 export const IconTable = (p: P) => (
   <Svg {...p}>
     <rect x="3" y="4.5" width="18" height="15" rx="2" />

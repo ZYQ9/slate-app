@@ -359,6 +359,20 @@ describe('stripInline', () => {
     expect(stripInline('Book flights 📅 2026-09-04')).toBe('Book flights')
     expect(stripInline('Book flights [due:: 2026-09-04]')).toBe('Book flights')
   })
+
+  /*
+   * The two styles written as HTML. A task row reading
+   * `<span style="color:#cf222e">Friday` is the syntax showing through in the
+   * one place the app promises it never does.
+   */
+  it('drops the markup around coloured and underlined text', () => {
+    expect(stripInline('Freeze starts <span style="color:#cf222e">Friday</span>')).toBe(
+      'Freeze starts Friday',
+    )
+    expect(stripInline('An <u>underlined</u> and ==highlighted== word')).toBe(
+      'An underlined and highlighted word',
+    )
+  })
 })
 
 describe('excerpt', () => {
@@ -369,6 +383,13 @@ describe('excerpt', () => {
 
   it('returns empty for a note with only a heading', () => {
     expect(excerptOf('# Only a title')).toBe('')
+  })
+
+  /* The tags go before the `>` strip, or the attributes become the excerpt. */
+  it('reads coloured text as its words', () => {
+    expect(excerptOf('# Plan\n\nThe freeze starts <span style="color:#cf222e">Friday</span>.')).toBe(
+      'The freeze starts Friday.',
+    )
   })
 
   /*

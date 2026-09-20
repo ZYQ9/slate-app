@@ -513,7 +513,15 @@ export function stripInline(s: string): string {
   return s
     .replace(/!?\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_, t, a) => a || t)
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/(\*\*|__|~~|\*|_|`)/g, '')
+    /*
+     * The two inline styles written as HTML: underline, and the coloured span
+     * (see editor/colors.ts). Named here rather than imported, because a tag
+     * left in a note-list row — `<span style="color:#cf222e">Friday` — is a
+     * markdown-dialect fact like the rest of this file, and core does not
+     * reach into the editor.
+     */
+    .replace(/<\/?(?:u|span)\b[^>]*>/g, '')
+    .replace(/(\*\*|__|~~|==|\*|_|`)/g, '')
     .replace(DUE_CUT, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -548,6 +556,12 @@ export function excerptOf(
       .replace(/^>\s*\[![A-Za-z]+\][+-]?\s*/, '')
       .replace(/!?\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_, t, a) => a || t)
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      /*
+       * Underline and colour, which are written as HTML — and which have to go
+       * before the line below strips `>`, since that would take the end off
+       * every tag and leave the attributes behind as the note's first words.
+       */
+      .replace(/<\/?(?:u|span)\b[^>]*>/g, '')
       .replace(/[*_~`>]/g, '')
       .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/, '')
       .trim()
