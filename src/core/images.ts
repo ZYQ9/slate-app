@@ -291,3 +291,26 @@ async function toBase64(blob: Blob): Promise<string> {
   const comma = url.indexOf(',')
   return comma === -1 ? '' : url.slice(comma + 1)
 }
+
+/** The edge a Tag Folder's own picture is kept at — twice the row's, for a sharp retina icon. */
+export const ICON_EDGE = 64
+
+/** An SVG small enough to carry inline as it is; anything larger is rasterized. */
+const ICON_SVG_MAX = 16 * 1024
+
+/**
+ * Turn a picked image into an icon a Tag Folder can carry as a data URL.
+ *
+ * The icon lives inside `smart-folders.json`, which syncs with everything else
+ * in backstage/, so it has to be small: a picture is shrunk to `ICON_EDGE` and
+ * re-encoded, which lands a photo at a few kilobytes. A small SVG is kept as it
+ * is — it is already tiny and scales cleanly — and it is only ever drawn by an
+ * `<img>`, where a script inside it cannot run.
+ */
+export async function toIconDataUrl(input: Blob): Promise<string> {
+  if (input.type === 'image/svg+xml' && input.size <= ICON_SVG_MAX) {
+    return `data:image/svg+xml;base64,${await toBase64(input)}`
+  }
+  const img = await toWireImage(input, ICON_EDGE)
+  return `data:${img.mime};base64,${img.base64}`
+}

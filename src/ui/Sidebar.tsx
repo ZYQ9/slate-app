@@ -32,6 +32,7 @@ import { parseQuery, tagsInQuery, folderInQuery } from '../core/tagquery'
 import { notify, scope, setScope, type Scope } from './state'
 import { menuAnchor, openMenu, useLongPress, type MenuItem } from './Menu'
 import { openTagFolderDialog } from './TagFolderDialog'
+import { FolderIcon, folderIconText } from './FolderIcon'
 import { openPrompt } from './PromptDialog'
 import { folderDropProps } from './dragNote'
 import { closeDrawer } from './layout'
@@ -355,7 +356,7 @@ function SmartFolderRow({ node }: { node: SmartNode }) {
               },
             },
             ...options.map((f) => ({
-              label: `${'　'.repeat(smartFolderAncestors(f.id).length)}${f.icon ?? '🏷️'} ${f.name}`,
+              label: `${'　'.repeat(smartFolderAncestors(f.id).length)}${folderIconText(f.icon)} ${f.name}`,
               disabled: f.id === sf.parentId,
               onSelect: async () => {
                 await moveSmartFolder(sf.id, f.id)
@@ -404,7 +405,7 @@ function SmartFolderRow({ node }: { node: SmartNode }) {
     <>
       <Row
         target={{ kind: 'smart', id: sf.id }}
-        icon={<span class="side-emoji">{sf.icon ?? '🏷️'}</span>}
+        icon={<FolderIcon icon={sf.icon} />}
         name={
           <>
             {sf.name}

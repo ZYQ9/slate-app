@@ -407,6 +407,13 @@ textarea {
   width: 15px;
   text-align: center;
 }
+/* A Tag Folder's own picture, sized to sit where its emoji would. */
+.side-icon-img {
+  height: 15px;
+  object-fit: contain;
+  border-radius: 3px;
+  flex: none;
+}
 .side-warn {
   color: var(--danger);
   font-weight: 700;
@@ -2990,6 +2997,77 @@ button.property-kind:hover {
 .chip small {
   color: var(--text-faint);
   font-size: 11px;
+}
+/* The Tag Folder icon picker: presets, any emoji, or a picture. */
+.icon-pick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 37px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 18px;
+}
+.icon-pick-btn[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+.icon-pick-btn .side-emoji {
+  font-size: 18px;
+  width: 22px;
+}
+.icon-pick-btn .side-icon-img {
+  height: 22px;
+}
+.icon-picker {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.icon-picker .chips {
+  gap: 4px;
+}
+.icon-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 18px;
+  -webkit-tap-highlight-color: transparent;
+}
+.icon-choice:hover {
+  border-color: var(--border-strong);
+}
+.icon-choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.icon-choice .side-icon-img {
+  height: 22px;
+}
+.icon-picker-own {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.icon-picker-own input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.icon-picker-own input:focus {
+  border-color: var(--accent);
 }
 .chip-op {
   font-family: var(--font-mono);

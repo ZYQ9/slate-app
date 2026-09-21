@@ -32,6 +32,7 @@ import {
 } from './state'
 import { CalendarPanel, DayNotesPanel, TasksPanel } from './RightRail'
 import { openTagFolderDialog } from './TagFolderDialog'
+import { FolderIcon } from './FolderIcon'
 import { openQuickAdd } from './QuickAdd'
 import { openMenu, useLongPress } from './Menu'
 import { startOfDay } from '../core/util'
@@ -296,7 +297,7 @@ export function MobileMore() {
           {smartFolderList.value.map((n) => (
             <MoreRow
               key={n.folder.id}
-              icon={<span class="side-emoji">{n.folder.icon ?? '🏷️'}</span>}
+              icon={<FolderIcon icon={n.folder.icon} />}
               label={n.folder.name}
               count={counts.get(n.folder.id)}
               indent={n.depth}

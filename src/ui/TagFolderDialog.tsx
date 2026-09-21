@@ -25,13 +25,21 @@ import {
 } from '../core/folders'
 import { setTagFolderOpen } from '../core/disclosure'
 import { describeQuery, parseQuery, type QueryNode } from '../core/tagquery'
+import { toIconDataUrl } from '../core/images'
 import { notify, setScope } from './state'
 import { IconClose } from './Icons'
+import { DEFAULT_FOLDER_ICON, FolderIcon, folderIconText, isImageIcon } from './FolderIcon'
 
 const editing = signal<Partial<SmartFolder> | null>(null)
 
 export function openTagFolderDialog(existing?: SmartFolder, parentId?: string) {
-  editing.value = existing ?? { name: '', query: '', icon: '🏷️', parentId, inherit: true }
+  editing.value = existing ?? {
+    name: '',
+    query: '',
+    icon: DEFAULT_FOLDER_ICON,
+    parentId,
+    inherit: true,
+  }
 }
 
 /*
@@ -39,13 +47,15 @@ export function openTagFolderDialog(existing?: SmartFolder, parentId?: string) {
  * statement — the row draws its own tick from what the folder actually does,
  * because an icon anyone can put on anything cannot be trusted to say so.
  */
-const ICONS = ['🏷️', '✅', '☑️', '⭐️', '🔥', '📌', '💼', '🏠', '🧠', '📚', '🧾', '🌱', '⚡️', '🎯']
+const ICONS = [DEFAULT_FOLDER_ICON, '✅', '☑️', '⭐️', '🔥', '📌', '💼', '🏠', '🧠', '📚', '🧾', '🌱', '⚡️', '🎯']
 
 export function TagFolderDialog() {
   const draft = editing.value
   const [name, setName] = useState('')
   const [query, setQuery] = useState('')
-  const [icon, setIcon] = useState('🏷️')
+  const [icon, setIcon] = useState(DEFAULT_FOLDER_ICON)
+  const [picking, setPicking] = useState(false)
+  const [ownEmoji, setOwnEmoji] = useState('')
   const [parentId, setParentId] = useState<string>('')
   const [inherit, setInherit] = useState(true)
   const [shows, setShows] = useState<'notes' | 'tasks'>('notes')
@@ -56,7 +66,9 @@ export function TagFolderDialog() {
     if (!draft) return
     setName(draft.name ?? '')
     setQuery(draft.query ?? '')
-    setIcon(draft.icon ?? '🏷️')
+    setIcon(draft.icon || DEFAULT_FOLDER_ICON)
+    setPicking(false)
+    setOwnEmoji('')
     setParentId(draft.parentId ?? '')
     setInherit(draft.inherit ?? true)
     setShows(draft.shows === 'tasks' ? 'tasks' : 'notes')
@@ -109,6 +121,50 @@ export function TagFolderDialog() {
   )
   const parentName = parentId ? smartFolderById(parentId)?.name : undefined
   const isGroup = !query.trim() && !inheritedNode
+
+  /**
+   * Bring a picture of your own. The input is attached to the document because
+   * iOS Safari ignores `click()` on a detached one — see `pickImage`.
+   */
+  const uploadIcon = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.style.position = 'fixed'
+    input.style.left = '-9999px'
+    input.style.opacity = '0'
+    const cleanup = () => setTimeout(() => input.remove(), 0)
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0]
+      cleanup()
+      if (!file) return
+      try {
+        setIcon(await toIconDataUrl(file))
+        setPicking(false)
+      } catch (e) {
+        notify(e instanceof Error ? e.message : 'That image could not be used as an icon')
+      }
+    })
+    input.addEventListener('cancel', cleanup)
+    document.body.appendChild(input)
+    input.click()
+  }
+
+  /** Any emoji at all — the first grapheme typed, so a stray space or letter after it is dropped. */
+  const applyOwnEmoji = () => {
+    const text = ownEmoji.trim()
+    if (!text) return
+    const [first] = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)
+    const seg = first?.segment
+    if (!seg) return
+    setIcon(seg)
+    setOwnEmoji('')
+    setPicking(false)
+  }
+
+  // An icon that isn't one of the presets is shown alongside them, so it can be
+  // picked back after trying another.
+  const choices = ICONS.includes(icon) ? ICONS : [...ICONS, icon]
 
   /** Insert a token at the caret, keeping spacing sane. */
   const insert = (token: string) => {
@@ -165,16 +221,18 @@ export function TagFolderDialog() {
 
         <div class="dialog-body">
           <div class="field-row">
-            <label class="field" style={{ flex: '0 0 auto', width: 78 }}>
+            <div class="field" style={{ flex: '0 0 auto', width: 78 }}>
               <span>Icon</span>
-              <select value={icon} onChange={(e) => setIcon((e.target as HTMLSelectElement).value)}>
-                {ICONS.map((i) => (
-                  <option key={i} value={i}>
-                    {i}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <button
+                type="button"
+                class="icon-pick-btn"
+                aria-expanded={picking}
+                aria-label="Choose icon"
+                onClick={() => setPicking(!picking)}
+              >
+                <FolderIcon icon={icon} />
+              </button>
+            </div>
             <label class="field">
               <span>Name</span>
               <input
@@ -187,6 +245,48 @@ export function TagFolderDialog() {
             </label>
           </div>
 
+          {picking && (
+            <div class="icon-picker">
+              <div class="chips" role="group" aria-label="Icon">
+                {choices.map((i) => (
+                  <button
+                    key={i}
+                    class="icon-choice"
+                    aria-pressed={icon === i}
+                    aria-label={isImageIcon(i) ? 'Your image' : i}
+                    onClick={() => {
+                      setIcon(i)
+                      setPicking(false)
+                    }}
+                  >
+                    <FolderIcon icon={i} />
+                  </button>
+                ))}
+              </div>
+              <div class="icon-picker-own">
+                <input
+                  type="text"
+                  placeholder="Any emoji…"
+                  aria-label="Any emoji"
+                  value={ownEmoji}
+                  onInput={(e) => setOwnEmoji((e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      applyOwnEmoji()
+                    }
+                  }}
+                />
+                <button class="btn" disabled={!ownEmoji.trim()} onClick={applyOwnEmoji}>
+                  Use
+                </button>
+                <button class="btn" onClick={uploadIcon}>
+                  Upload image…
+                </button>
+              </div>
+            </div>
+          )}
+
           {parentOptions.length > 0 && (
             <label class="field">
               <span>Inside</span>
@@ -198,7 +298,7 @@ export function TagFolderDialog() {
                 {parentOptions.map((n) => (
                   <option key={n.folder.id} value={n.folder.id}>
                     {'— '.repeat(n.depth)}
-                    {n.folder.icon ?? '🏷️'} {n.folder.name}
+                    {folderIconText(n.folder.icon)} {n.folder.name}
                   </option>
                 ))}
               </select>

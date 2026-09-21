@@ -226,7 +226,7 @@ export interface SmartFolder {
   name: string
   /** The boolean rule, as typed. Empty means this is a pure grouping folder. */
   query: string
-  /** Emoji shown in the sidebar. */
+  /** Emoji shown in the sidebar, or an image of your own as a small `data:` URL. */
   icon?: string
   /** Parent Tag Folder, for nesting. Undefined means top level. */
   parentId?: string
